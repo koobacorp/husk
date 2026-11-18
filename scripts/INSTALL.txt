@@ -1,0 +1,12 @@
+HUSK v1.0.0 — macOS install
+
+1. Unzip this folder.
+2. Close FL Studio.
+3. Copy HUSK.vst3 into:
+   /Library/Audio/Plug-Ins/VST3
+   (or, for your user only, ~/Library/Audio/Plug-Ins/VST3)
+4. Rescan plugins in FL Studio: Options > Manage plugins > Find plugins.
+5. Add HUSK on the mixer track of a vocal (it is an effect, not a generator).
+   For Chord mode, route MIDI to it: in the mixer slot menu or with a MIDI Out channel set to the same port as HUSK.
+
+Nothing is installed automatically. install_mac.sh copies the VST3 after asking and needs your Mac password (sudo).
