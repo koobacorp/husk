@@ -8,6 +8,11 @@ const char* const kParamIds[kNumParams] = {
 
 namespace {
 using APF = juce::AudioParameterFloat; using APB = juce::AudioParameterBool; using APC = juce::AudioParameterChoice;
+// Switches are two-step choices so the host value is always exactly 0 or 1 (state restores bit-exact).
+static std::unique_ptr<APC> onOff(const char* id, const char* name) {
+    return std::make_unique<APC>(juce::ParameterID { id, 1 }, name, juce::StringArray { "Off", "On" }, 0);
+}
+
 juce::String pct(float v, int) { return juce::String(juce::roundToInt(v * 100.0f)) + "%"; }
 juce::String signedSt(float v, int) { auto r = std::round(v * 10.0f) / 10.0f; return (r > 0 ? "+" : "") + juce::String(r, std::abs(r - std::round(r)) < 0.05f ? 0 : 1) + " st"; }
 std::unique_ptr<APF> fl(const char* id, const char* name, juce::NormalisableRange<float> r, float def, std::function<juce::String(float, int)> txt) {
@@ -27,19 +32,19 @@ juce::AudioProcessorValueTreeState::ParameterLayout HuskProcessor::layout() {
     l.add(fl("phase", "Phase", { 0.0f, 1.0f, 0.001f }, 0.0f, pct));
     { juce::NormalisableRange<float> r(0.05f, 20.0f, 0.001f); r.setSkewForCentre(1.0f);
       l.add(fl("phase_rate", "Phase Rate", r, 1.0f, [](float v, int) { return juce::String(v, v < 1 ? 2 : 1) + " Hz"; })); }
-    l.add(std::make_unique<APB>(juce::ParameterID { "phase_sync", 1 }, "Phase Rate Sync", false));
+    l.add(onOff("phase_sync", "Phase Rate Sync"));
     l.add(std::make_unique<APC>(juce::ParameterID { "phase_div", 1 }, "Phase Rate Note", juce::StringArray { "1/4", "1/8", "1/8T", "1/16", "1/16T", "1/32" }, 3));
     l.add(std::make_unique<APC>(juce::ParameterID { "steps", 1 }, "Steps", juce::StringArray { "Off", "1/4", "1/8", "1/8T", "1/16", "1/16T", "1/32" }, 0));
     l.add(fl("water", "Water", { -1.0f, 1.0f }, 0.0f, [](float v, int) { return v < 0 ? "Glide " + juce::String(juce::roundToInt(-v * 100)) + "%" : "Water " + juce::String(juce::roundToInt(v * 100)) + "%"; }));
     l.add(fl("grain", "Grain", { -1.0f, 1.0f }, 0.0f, [](float v, int) { return v < 0 ? "Soft " + juce::String(juce::roundToInt(-v * 100)) + "%" : "Grain " + juce::String(juce::roundToInt(v * 100)) + "%"; }));
-    l.add(std::make_unique<APB>(juce::ParameterID { "freeze", 1 }, "Freeze", false));
-    l.add(std::make_unique<APB>(juce::ParameterID { "chord", 1 }, "Chord (MIDI)", false));
+    l.add(onOff("freeze", "Freeze"));
+    l.add(onOff("chord", "Chord (MIDI)"));
     l.add(fl("shimmer", "Shimmer", { 0.0f, 1.0f, 0.001f }, 0.0f, pct));
     l.add(fl("space", "Space", { 0.0f, 1.0f, 0.001f }, 0.0f, pct));
     l.add(fl("crunch", "Crunch", { 0.0f, 1.0f, 0.001f }, 0.0f, pct));
     l.add(fl("mix", "Mix", { 0.0f, 1.0f, 0.001f }, 1.0f, pct));
     l.add(fl("out", "Out", { -24.0f, 12.0f, 0.1f }, 0.0f, [](float v, int) { return juce::String(v, 1) + " dB"; }));
-    l.add(std::make_unique<APB>(juce::ParameterID { "ab", 1 }, "A/B (dry voice)", false));
+    l.add(onOff("ab", "A/B (dry voice)"));
     l.add(std::make_unique<APB>(juce::ParameterID { "bypass", 1 }, "Bypass", false));
     return l;
 }
