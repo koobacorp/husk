@@ -40,29 +40,15 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> att;
 };
 
-class PartialsView : public juce::Component {
+// What the voice is doing to the instrument right now: 28 vowel bands, the note, tone and consonants.
+class VowelView : public juce::Component {
 public:
-    explicit PartialsView(HuskProcessor& p) : proc(p) {}
+    explicit VowelView(HuskProcessor& p) : proc(p) {}
     void paint(juce::Graphics&) override;
     HuskProcessor& proc;
 };
 
-class XYPad : public juce::Component {
-public:
-    explicit XYPad(HuskProcessor& p) : proc(p) {}
-    void paint(juce::Graphics&) override;
-    void mouseDown(const juce::MouseEvent&) override;
-    void mouseDrag(const juce::MouseEvent&) override;
-    void mouseUp(const juce::MouseEvent&) override;
-    void mouseDoubleClick(const juce::MouseEvent&) override;
-    void resetToCentre();
-    juce::Rectangle<float> padArea() const;
-private:
-    void setFrom(juce::Point<float>);
-    HuskProcessor& proc; bool dragging = false;
-};
-
-class ModelBar : public juce::Component {
+class ModelBar : public juce::Component {   // the nine instrument models
 public:
     explicit ModelBar(HuskProcessor& p) : proc(p) {}
     void paint(juce::Graphics&) override;
@@ -87,8 +73,8 @@ public:
     ~HuskEditor() override;
     void paint(juce::Graphics&) override;
     void resized() override;
-    static constexpr int kW = 1100, kH = 700;
-    ui::XYPad& pad() { return *xy; }
+    static constexpr int kW = 1200, kH = 760;
+    void refreshNow() { timerCallback(); }
 
 private:
     void timerCallback() override;
@@ -97,15 +83,15 @@ private:
     ui::LookAndFeel lnf;
     Content content;
     struct Led : public juce::Component { HuskEditor* ed = nullptr; void paint(juce::Graphics&) override; } midiLed;
-    std::unique_ptr<ui::PartialsView> partials;
-    std::unique_ptr<ui::XYPad> xy;
+    std::unique_ptr<ui::VowelView> vowels;
     std::unique_ptr<ui::ModelBar> models;
     std::unique_ptr<ui::Segmented> octave;
-    std::unique_ptr<ui::Knob> kPartials, kPitch, kFormant, kPhase, kPhaseRate, kAir, kShimmer, kSpace, kCrunch, kMix, kOut;
-    juce::ComboBox presetBox, stepsBox, divBox;
-    juce::TextButton abBtn { "A/B" }, bypassBtn { "BYPASS" }, freezeBtn { "FREEZE" }, chordBtn { "CHORD (MIDI)" }, syncBtn { "SYNC" };
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> abAtt, byAtt, frAtt, chAtt, syAtt;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> stAtt, dvAtt;
+    std::unique_ptr<ui::Knob> kPartials, kTalk, kPitch, kFormant, kPhase, kPhaseRate, kAir, kShimmer, kSpace, kCrunch, kMix, kOut,
+        kUnison, kDetune, kWidth, kDrift, kGlide;
+    juce::ComboBox presetBox, stepsBox, divBox, keyBox, scaleBox;
+    juce::TextButton abBtn { "A/B" }, bypassBtn { "BYPASS" }, freezeBtn { "FREEZE" }, chordBtn { "CHORD (MIDI)" }, syncBtn { "SYNC" }, snapBtn { "NOTE SNAP" };
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> abAtt, byAtt, frAtt, chAtt, syAtt, snAtt;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> stAtt, dvAtt, kyAtt, scAtt;
     long long lastMidi = 0; int midiGlow = 0; int lastProgramShown = -1;
     friend struct Content; friend struct Led;
 };

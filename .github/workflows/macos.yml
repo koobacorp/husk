@@ -20,6 +20,11 @@ jobs:
         run: |
           set -o pipefail
           ./build/Release/husk_engine_tests 2>&1 | tee engine-test-log.txt
+      - name: Quality tests (real vocal + generated phrase; fail on any missed target)
+        shell: bash
+        run: |
+          set -o pipefail
+          ./build/Release/husk_quality_tests --data tests/data 2>&1 | tee quality-test-log.txt
       - name: Plugin tests (JUCE processor + editor screenshots)
         shell: bash
         run: |
@@ -37,6 +42,7 @@ jobs:
           lipo -info "$b/Contents/MacOS/HUSK" | tee lipo.txt
           lipo "$b/Contents/MacOS/HUSK" -verify_arch arm64 x86_64
           /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$b/Contents/Info.plist" | tee version.txt
+          grep -qx "2.0.0" version.txt
       - name: pluginval VST3 strictness 10 (required)
         shell: bash
         run: |
@@ -44,6 +50,9 @@ jobs:
           curl -fLsS -o pluginval.zip https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_macOS.zip
           unzip -q pluginval.zip
           ./pluginval.app/Contents/MacOS/pluginval --strictness-level 10 --validate-in-process --timeout-ms 600000 "build/Husk_artefacts/Release/VST3/HUSK.vst3" 2>&1 | tee pluginval-vst3-log.txt
+          # pipefail fails the step on a non-zero exit; also require pluginval's own success line
+          grep -q "SUCCESS" pluginval-vst3-log.txt || { echo "pluginval did not report SUCCESS"; exit 1; }
+          if grep -q "FAILED" pluginval-vst3-log.txt; then echo "pluginval reported FAILED"; exit 1; fi
       - name: Package
         if: success()
         run: |
@@ -51,16 +60,17 @@ jobs:
           cp -R build/Husk_artefacts/Release/VST3/HUSK.vst3 pkg/HUSK/
           cp scripts/install_mac.sh scripts/INSTALL.txt README.md TESTING.md pkg/HUSK/
           chmod +x pkg/HUSK/install_mac.sh
-          cd pkg && zip -9 -r -y -q "$GITHUB_WORKSPACE/HUSK-macOS-universal-v1.0.0.zip" HUSK
-          shasum -a 256 "$GITHUB_WORKSPACE/HUSK-macOS-universal-v1.0.0.zip" | tee "$GITHUB_WORKSPACE/sha256.txt"
+          cd pkg && zip -9 -r -y -q "$GITHUB_WORKSPACE/HUSK-macOS-universal-v2.0.0.zip" HUSK
+          shasum -a 256 "$GITHUB_WORKSPACE/HUSK-macOS-universal-v2.0.0.zip" | tee "$GITHUB_WORKSPACE/sha256.txt"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: HUSK-macOS-universal-v1.0.0
+          name: HUSK-macOS-universal-v2.0.0
           path: |
-            HUSK-macOS-universal-v1.0.0.zip
+            HUSK-macOS-universal-v2.0.0.zip
             shots/*.png
             engine-test-log.txt
+            quality-test-log.txt
             plugin-test-log.txt
             pluginval-vst3-log.txt
             lipo.txt

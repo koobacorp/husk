@@ -1,23 +1,28 @@
 # HUSK tests
 
-Two test programs, both run in CI on every push.
+Three test programs. All run in CI on every push, and any failure fails the build.
+
+## husk_quality_tests — "is it really an instrument?" (no JUCE)
+
+Runs on a real unaccompanied sung vocal (`tests/data/welsh_vocal_12s.wav`, CC BY-SA 4.0) and on a generated sung phrase (vowels, vibrato, glides, consonants). Targets:
+
+| Gate | Target |
+|---|---|
+| Output pitch within 25 cents of the singer | ≥ 95% of sung frames |
+| With Note Snap: output locked to a scale note (25 cents) | ≥ 95% |
+| Loudness correlation with the singer | ≥ 0.9 |
+| Changing the vowel moves the output | ≥ 4 dB |
+| Hiss (noise share) on held notes | < 10% |
+| Default sound vs the dry voice | ≥ 10 dB |
+| Every pair of presets | ≥ 6 dB apart |
+| Every control at its extreme vs the default | ≥ 3 dB |
+
+Distances are the mean absolute difference of level-normalised 64-band mel spectra (dB) on active frames; for controls, the larger of that and a fine 4096-point harmonic spectrum. Width is measured as stereo side/mid change, Out as level, Air on consonant moments. Pitch is measured with YIN plus a subharmonic-summation octave check, the same meter for input and output. Extra WAVs can be added with `--extra file.wav` (reported, not gated).
 
 ## husk_engine_tests (no JUCE)
 
-Checks the engine against textbook math:
-
-- declared latency at 44.1/48/88.2/96 kHz is under 25 ms, and the measured wet latency matches it
-- Mix 0 nulls against the latency-compensated dry, with every colour knob up
-- pitch tracking G2..G5 at -37/0/+23 cents (worst error in cents)
-- partial tracking on harmonic tones (frequency in cents, level in dB), voice round trip, sine sweeps
-- Partials = 1 gives one pure tone; Pitch/Octave shifts; Formant moves the envelope, not the pitch
-- each instrument model's harmonic shape (Saw 1/n, Square odd 1/n, ...)
-- Freeze stability, MIDI chord pitch accuracy, Steps locked to host tempo
-- Phase, Water/Grain pad, Air, Shimmer, Space, Crunch each do what they say
-- safety ceiling: hot inputs with Out +12 dB stay under 0 dBTP
-- 30 s random automation fuzz: finite, no subnormals, under 0 dBTP
-- CPU budget for the worst case (6-note chord + Choir + Phase)
+Latency (≤ 19 ms at 44.1/48/88.2/96 kHz, and measured on the wet path), bit-exact Mix 0 / Bypass / A/B with hot input, true peak ≤ −0.1 dBFS for every model with Out +12 dB, a 30 s random fuzz (finite, no subnormals), pitch G2–G5, octave guard, gap riding, Note Snap, Glide, Freeze (last sung moment, and engaged before singing), MIDI chord pitches, Steps on the host grid, Partials, Width, Formant, Pitch/Octave and worst-case CPU.
 
 ## husk_plugin_tests (JUCE)
 
-Plugin identity, buses, latency reported to the host, mix-0 / bypass / host-bypass nulls, MIDI chords through processBlock, Steps with a host play head, every parameter exercised, state save/restore, presets, fuzz, CPU through processBlock, and editor screenshots (`shots/`).
+Plugin identity, buses, latency reported to the host, Mix 0 / Bypass / host-bypass nulls, MIDI chords through processBlock, Steps with a host play head, every parameter exercised, state save/restore, presets, loading v1 sessions, fuzz, CPU through processBlock, and editor screenshots (`shots/v2-*.png`).

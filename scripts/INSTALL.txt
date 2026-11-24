@@ -1,4 +1,4 @@
-HUSK v1.0.0 — macOS install
+HUSK v2.0.0 — macOS install
 
 1. Unzip this folder.
 2. Close FL Studio.

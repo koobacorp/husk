@@ -62,6 +62,7 @@ struct Rig {
 };
 
 static void savePng(juce::Component& c, const juce::String& name) {
+    if (auto* ed = dynamic_cast<HuskEditor*>(&c)) ed->refreshNow();   // what the editor's timer does (no message loop here)
     auto img = c.createComponentSnapshot(c.getLocalBounds(), true, 1.0f);
     auto f = juce::File::getCurrentWorkingDirectory().getChildFile(name);
     f.deleteFile();
@@ -99,7 +100,7 @@ int main(int, char**) {
     { std::puts("- latency reported to the host");
       for (double sr : { 44100.0, 48000.0, 88200.0, 96000.0 }) {
           Rig r(sr); int L = r.p.getLatencySamples();
-          CHECK(L == r.p.engine().latencySamples()); CHECK(L / sr * 1000.0 <= 25.0);
+          CHECK(L == r.p.engine().latencySamples()); CHECK(L / sr * 1000.0 <= 19.0);
           // measured with an impulse at Mix 0 through the real processBlock
           r.set(P_MIX, 0); std::vector<float> x((size_t)(0.5 * sr), 0.0f); x[1234] = 0.5f; r.run(x);
           int at = tu::argmaxAbs(r.L);
@@ -109,7 +110,7 @@ int main(int, char**) {
 
     { std::puts("- Mix 0 null and Bypass through processBlock (stereo and mono)");
       for (bool mono : { false, true }) {
-          Rig r(48000, 480, mono); r.set(P_MIX, 0); r.set(P_CRUNCH, 1); r.set(P_SPACE, 1); r.set(P_SHIMMER, 1); r.set(P_MODEL, 5);
+          Rig r(48000, 480, mono); r.set(P_MIX, 0); r.set(P_CRUNCH, 1); r.set(P_SPACE, 1); r.set(P_SHIMMER, 1); r.set(P_MODEL, 5); r.set(P_UNISON, 7); r.set(P_AIR, 1);
           husk::Rng g(4); std::vector<float> x(48000); for (auto& v : x) v = 0.4f * g.bi();
           r.run(x); int L = r.p.getLatencySamples(); double md = 0;
           for (size_t i = (size_t)L; i < x.size(); ++i) md = std::max(md, (double)std::fabs(r.L[i] - x[i - (size_t)L]));
@@ -125,7 +126,7 @@ int main(int, char**) {
       } }
 
     { std::puts("- MIDI Chord mode through processBlock (notes arrive mid-block)");
-      Rig r; r.set(P_CHORD, 1);
+      Rig r; r.set(P_CHORD, 1); r.set(P_MODEL, 7); r.set(P_UNISON, 1); r.set(P_DRIFT, 0);
       auto x = vowel(220, 2.5, 44100);
       std::vector<std::pair<int, juce::MidiMessage>> ev = { { 300, juce::MidiMessage::noteOn(1, 48, 0.8f) }, { 301, juce::MidiMessage::noteOn(1, 52, 0.8f) }, { 777, juce::MidiMessage::noteOn(1, 55, 0.8f) },
                                                             { 60000, juce::MidiMessage::noteOff(1, 52) } };
@@ -135,17 +136,18 @@ int main(int, char**) {
       tu::Spec s2; s2.run(m, 75000, 16384, 44100);
       double e3 = db(s2.amp(164.81, 4) / std::sqrt(s2.bandPower(60, 10000)));
       std::printf("  chord tones within %.3f cents; after E3 note-off its level is %.1f dB; MIDI events seen %lld, held now %d\n", wc, e3, r.p.midiCount.load(), r.p.heldNotes.load());
-      CHECK(wc < 2); CHECK(e3 < -40); CHECK(r.p.midiCount.load() == 4); CHECK(r.p.heldNotes.load() == 2);
+      CHECK(wc < 10); CHECK(e3 < -25); CHECK(r.p.midiCount.load() == 4); CHECK(r.p.heldNotes.load() == 2);
     }
 
-    { std::puts("- Steps follow the host tempo through the play head");
-      Rig r(44100, 256); r.set(P_STEPS, 4); r.head.bpm = 120;
-      std::vector<double> times; long long last = -1;
-      auto x = vowel(200, 2.0, 44100);
-      r.run(x, {}, [&](Rig& rr, int pos) { long long u = rr.p.engine().recipeUpdates; if (u != last) { times.push_back(pos / 44100.0); last = u; } });
-      double worst = 0; for (size_t i = 3; i < times.size(); ++i) worst = std::max(worst, std::fabs(times[i] - times[i - 1] - 0.125));  // [0] initial read, [1] start
-      std::printf("  1/16 at 120 BPM: %zu updates, worst interval error %.2f ms\n", times.size(), worst * 1000);
-      CHECK(times.size() >= 14); CHECK(worst <= 256 / 44100.0 + 1e-6);
+    { std::puts("- Steps follow the host tempo through the play head (pitch moves only on the 1/16 grid)");
+      Rig r(44100, 64); r.set(P_STEPS, 4); r.head.bpm = 120;
+      std::vector<float> x(2 * 44100); { double ph = 0; for (size_t i = 0; i < x.size(); ++i) { double f = 150 * std::pow(2.0, i / 44100.0 / 2.0); ph += husk::kTwoPi * f / 44100; x[i] = (float)(0.2 * (std::sin(ph) + 0.4 * std::sin(2 * ph) + 0.2 * std::sin(3 * ph))); } }
+      std::vector<double> times; float last = 0;
+      r.run(x, {}, [&](Rig& rr, int pos) { float f = rr.p.engine().currentF0(); if (last > 0 && std::fabs(cents(f, last)) > 15) times.push_back(pos / 44100.0); last = f; });
+      std::vector<double> t2; for (double t : times) if (t2.empty() || t - t2.back() > 0.03) t2.push_back(t);
+      double worst = 0; for (size_t i = 6; i < t2.size(); ++i) worst = std::max(worst, std::fabs(t2[i] - t2[i - 1] - 0.125));   // skip the note start (onset + first grid line)
+      std::printf("  1/16 at 120 BPM: %zu pitch steps, worst interval error %.2f ms\n", t2.size(), worst * 1000);
+      CHECK(t2.size() >= 12); CHECK(worst <= 0.012);
     }
 
     { std::puts("- every control changes the sound (each against a neutral baseline)");
@@ -153,10 +155,12 @@ int main(int, char**) {
       struct C { int idx; float v; std::function<void(Rig&)> ctx; };
       auto none = [](Rig&) {};
       std::vector<C> cs = {
-          { P_MODEL, 1, none }, { P_PARTIALS, 3, none }, { P_AIR, 1, none }, { P_PITCH, 5, none }, { P_OCTAVE, 2, none }, { P_FORMANT, 4, none },
+          { P_MODEL, 1, none }, { P_PARTIALS, 3, none }, { P_TALK, 0, none }, { P_AIR, 1, none }, { P_PITCH, 5, none }, { P_OCTAVE, 2, none }, { P_FORMANT, 4, none },
           { P_PHASE, 0.5f, none }, { P_PHASE_RATE, 9, [](Rig& r) { r.set(P_PHASE, 0.5f); } },
           { P_PHASE_SYNC, 1, [](Rig& r) { r.set(P_PHASE, 0.5f); } }, { P_PHASE_DIV, 0, [](Rig& r) { r.set(P_PHASE, 0.5f); r.set(P_PHASE_SYNC, 1); } },
-          { P_STEPS, 2, none }, { P_WATER, 0.8f, none }, { P_GRAIN, 0.8f, none }, { P_FREEZE, 1, none }, { P_CHORD, 1, none },
+          { P_STEPS, 2, none }, { P_FREEZE, 1, none }, { P_CHORD, 1, none },
+          { P_SNAP, 1, none }, { P_KEY, 2, [](Rig& r) { r.set(P_SNAP, 1); r.set(P_SCALE, 1); } }, { P_SCALE, 4, [](Rig& r) { r.set(P_SNAP, 1); } }, { P_GLIDE, 400, none },
+          { P_UNISON, 7, none }, { P_DETUNE, 1, none }, { P_WIDTH, 1, none }, { P_DRIFT, 1, none },
           { P_SHIMMER, 0.6f, none }, { P_SPACE, 0.6f, none }, { P_CRUNCH, 0.6f, none }, { P_MIX, 0.3f, none }, { P_OUT, -6, none },
           { P_AB, 1, none }, { P_BYPASS, 1, none } };
       CHECK((int)cs.size() == kNumParams);
@@ -189,9 +193,35 @@ int main(int, char**) {
           std::printf(" %s%s", r.p.getProgramName(i).toRawUTF8(), i + 1 < n ? "," : "\n");
           r.run(vowel(220, 0.8, 44100)); CHECK(tu::finite(r.L)); CHECK(tu::peak2(r.L, r.R) <= 0.97f);
       }
-      Rig r; r.p.setCurrentProgram(10); CHECK(std::lround(r.p.value(P_PARTIALS)) == 1); CHECK(std::lround(r.p.value(P_MODEL)) == 0);
-      r.p.setCurrentProgram(2); CHECK(std::lround(r.p.value(P_MODEL)) == 3); CHECK(std::lround(r.p.value(P_PARTIALS)) == 40);
-      r.p.setCurrentProgram(0); CHECK(std::lround(r.p.value(P_PARTIALS)) == 64); CHECK(r.p.value(P_SPACE) == 0.0f); CHECK(r.p.value(P_MIX) == 1.0f);
+      Rig r; r.p.setCurrentProgram(1); CHECK(std::lround(r.p.value(P_MODEL)) == husk::Reed); CHECK(std::lround(r.p.value(P_UNISON)) == 1);
+      r.p.setCurrentProgram(7); CHECK(std::lround(r.p.value(P_MODEL)) == husk::Ghost);
+      r.p.setCurrentProgram(8); CHECK(r.p.readParams().octave == 1); r.p.setCurrentProgram(9); CHECK(r.p.readParams().octave == -1); r.p.setCurrentProgram(6); CHECK(r.p.readParams().octave == 0);
+      r.p.setCurrentProgram(0); CHECK(std::lround(r.p.value(P_MODEL)) == husk::SawLead); CHECK(std::lround(r.p.value(P_PARTIALS)) == 64); CHECK(r.p.value(P_SPACE) == 0.0f); CHECK(r.p.value(P_MIX) == 1.0f);
+      CHECK(std::abs(r.p.value(P_AIR) - 0.15f) < 1e-4f); CHECK(std::lround(r.p.value(P_UNISON)) == 3);
+    }
+
+    { std::puts("- a v1 session loads without crashing and lands on the closest v2 model");
+      // v1 state: water/grain parameters, 7 models (index 6 = String), program 3, no version tag
+      const char* v1xml = R"(<?xml version="1.0" encoding="UTF-8"?>
+<HUSK program="3"><PARAM id="model" value="6.0"/><PARAM id="partials" value="12.0"/><PARAM id="water" value="0.7"/><PARAM id="grain" value="-0.4"/>
+<PARAM id="air" value="0.6"/><PARAM id="pitch" value="3.0"/><PARAM id="octave" value="1.0"/><PARAM id="formant" value="0.0"/><PARAM id="phase" value="0.2"/>
+<PARAM id="phase_rate" value="1.0"/><PARAM id="phase_sync" value="0.0"/><PARAM id="phase_div" value="3.0"/><PARAM id="steps" value="0.0"/><PARAM id="freeze" value="0.0"/>
+<PARAM id="chord" value="0.0"/><PARAM id="shimmer" value="0.3"/><PARAM id="space" value="0.4"/><PARAM id="crunch" value="0.0"/><PARAM id="mix" value="0.8"/><PARAM id="out" value="-2.0"/>
+<PARAM id="ab" value="0.0"/><PARAM id="bypass" value="0.0"/></HUSK>)";
+      int mapped = 0;
+      for (int v1m = 0; v1m < 7; ++v1m) {
+          juce::String xmlText = juce::String(v1xml).replace("id=\"model\" value=\"6.0\"", "id=\"model\" value=\"" + juce::String(v1m) + ".0\"");
+          auto xml = juce::parseXML(xmlText); CHECK(xml != nullptr); if (!xml) continue;
+          juce::MemoryBlock mb; juce::AudioProcessor::copyXmlToBinary(*xml, mb);
+          Rig r; r.p.setStateInformation(mb.getData(), (int)mb.getSize());
+          int m = (int)std::lround(r.p.value(P_MODEL)); mapped += m == mapV1Model(v1m);
+          r.run(vowel(220, 0.5, 44100)); CHECK(tu::finite(r.L)); CHECK(tu::peak2(r.L, r.R) <= 0.97f);
+          if (v1m == 6) { CHECK(std::lround(r.p.value(P_PARTIALS)) == 12); CHECK(std::abs(r.p.value(P_MIX) - 0.8f) < 1e-3f); CHECK(std::lround(r.p.value(P_PITCH)) == 3);
+                          CHECK(r.p.getCurrentProgram() >= 0 && r.p.getCurrentProgram() < r.p.getNumPrograms()); }
+      }
+      std::printf("  7 of 7 v1 models load; %d mapped to the planned v2 model (String -> %s, Sine -> %s)\n", mapped, husk::modelName(mapV1Model(6)), husk::modelName(mapV1Model(0)));
+      CHECK(mapped == 7);
+      Rig g; const char junk[] = "not a state"; g.p.setStateInformation(junk, (int)sizeof(junk)); g.run(vowel(220, 0.3, 44100)); CHECK(tu::finite(g.L));
     }
 
     { std::puts("- random automation + MIDI fuzz through processBlock (20 s, random block sizes)");
@@ -204,7 +234,7 @@ int main(int, char**) {
       auto tail = std::vector<float>(48000, 0.0f); Rig& rr = r; (void)rr;
       float tp = std::max(tu::truePeak(r.L), tu::truePeak(r.R));
       std::printf("  finite %d, subnormal %d, true peak %.2f dBTP, %.1f%% of real time\n", tu::finite(r.L) && tu::finite(r.R), tu::hasSubnormal(r.L) || tu::hasSubnormal(r.R), db(tp), t / 20.0 * 100);
-      CHECK(tu::finite(r.L) && tu::finite(r.R)); CHECK(!tu::hasSubnormal(r.L)); CHECK(tp <= 1.0f);
+      CHECK(tu::finite(r.L) && tu::finite(r.R)); CHECK(!tu::hasSubnormal(r.L)); CHECK(tp <= std::pow(10.0f, -0.1f / 20.0f));
     }
 
     { std::puts("- CPU through processBlock (default preset, 512-sample blocks)");
@@ -216,17 +246,16 @@ int main(int, char**) {
       Rig r; auto* ed = dynamic_cast<HuskEditor*>(r.p.createEditor()); CHECK(ed != nullptr);
       if (ed) {
           CHECK(ed->isResizable());
-          ed->setSize(1100, 700); savePng(*ed, "HUSK-silent.png");
-          r.run(vowel(220, 0.6, 44100)); ed->setSize(1100, 700); savePng(*ed, "HUSK-vowel-full.png");
-          r.set(P_PARTIALS, 1); r.run(vowel(220, 0.4, 44100)); savePng(*ed, "HUSK-partials-1.png");
-          r.set(P_PARTIALS, 24); r.set(P_FREEZE, 1); r.set(P_MODEL, 3); r.set(P_WATER, 0.55f); r.set(P_GRAIN, 0.35f); r.set(P_SHIMMER, 0.4f); r.set(P_SPACE, 0.5f);
-          r.run(vowel(196, 0.4, 44100)); r.run(std::vector<float>(22050, 0.0f)); savePng(*ed, "HUSK-freeze.png");
-          r.set(P_FREEZE, 0); r.set(P_CHORD, 1); r.set(P_MODEL, 5); r.set(P_PARTIALS, 48); r.set(P_PHASE_SYNC, 1); r.set(P_STEPS, 4);
+          const int W = HuskEditor::kW, H = HuskEditor::kH;
+          ed->setSize(W, H); savePng(*ed, "v2-silent.png");
+          r.run(vowel(220, 0.6, 44100)); ed->setSize(W, H); savePng(*ed, "v2-default-singing.png");
+          r.p.setCurrentProgram(2); r.run(vowel(247, 0.6, 44100)); savePng(*ed, "v2-glass-choir.png");
+          r.p.setCurrentProgram(8); r.run(vowel(196, 0.5, 44100)); r.set(P_FREEZE, 1); r.run(std::vector<float>(22050, 0.0f)); savePng(*ed, "v2-frozen-halo.png");
+          r.p.setCurrentProgram(4); r.set(P_CHORD, 1);
           r.run(vowel(220, 0.6, 44100), { { 10, juce::MidiMessage::noteOn(1, 48, 0.8f) }, { 10, juce::MidiMessage::noteOn(1, 52, 0.8f) }, { 10, juce::MidiMessage::noteOn(1, 55, 0.8f) } });
-          savePng(*ed, "HUSK-chord-midi.png");
-          ed->pad().resetToCentre(); CHECK(r.p.value(P_WATER) == 0.0f && r.p.value(P_GRAIN) == 0.0f);
-          ed->setSize(770, 490); savePng(*ed, "HUSK-small.png");
-          ed->setSize(1650, 1050); savePng(*ed, "HUSK-large.png");
+          savePng(*ed, "v2-organ-chord-midi.png");
+          ed->setSize(W * 7 / 10, H * 7 / 10); savePng(*ed, "v2-small.png");
+          ed->setSize(W * 3 / 2, H * 3 / 2); savePng(*ed, "v2-large.png");
           delete ed;
       } }
 

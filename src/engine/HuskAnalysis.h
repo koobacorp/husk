@@ -41,6 +41,7 @@ public:
     int N = 1024, H = 256, Npad = 4096, D = 1;   // frame, hop, padded FFT size, YIN decimation
     float minF0 = 70.0f, maxF0 = 1000.0f;
     float voicedThresh = 0.20f, gateRms = 0.0008f;
+    bool wantPartials = true;   // v2: only the Ghost model needs the full partial list
     std::array<float, kBands> bandFc {}, bandLo {}, bandHi {};
     int nBands = kBands;
 
@@ -106,7 +107,7 @@ public:
             if (den > 0) f0 = num / den;
             f.f0 = (float)f0;
             double fTop = std::min(0.45 * sr, 16000.0);
-            int K = std::min(kMaxPartials, (int)std::floor(fTop / f0));
+            int K = wantPartials ? std::min(kMaxPartials, (int)std::floor(fTop / f0)) : 0;
             float amax = 0;
             // pass 1: interpolated peaks
             for (int h = 1; h <= K; ++h) {
@@ -254,8 +255,12 @@ private:
         for (int t = tauMin; t < tauMax; ++t) {
             if (dprime[(size_t)t] < 0.15f) { while (t + 1 < tauMax && dprime[(size_t)t + 1] < dprime[(size_t)t]) ++t; best = t; break; }
         }
-        if (best < 0) {  // global minimum
-            float m = 1e9f; for (int t = tauMin; t < tauMax; ++t) if (dprime[(size_t)t] < m) { m = dprime[(size_t)t]; best = t; }
+        if (best < 0) {  // no clear dip: take the shortest period whose dip is close to the deepest one
+            float m = 1e9f; int g = -1; for (int t = tauMin; t < tauMax; ++t) if (dprime[(size_t)t] < m) { m = dprime[(size_t)t]; g = t; }
+            best = g;
+            const float lim = std::min(m * 1.35f + 0.05f, m + 0.12f);
+            for (int t = tauMin + 1; t < g; ++t)
+                if (dprime[(size_t)t] < lim && dprime[(size_t)t] <= dprime[(size_t)t - 1] && dprime[(size_t)t] <= dprime[(size_t)t + 1]) { best = t; break; }
         }
         if (best <= tauMin || best >= tauMax - 1) { tauOut = 0; apOut = 1; return; }
         float a = dprime[(size_t)best - 1], b = dprime[(size_t)best], c = dprime[(size_t)best + 1];

@@ -4,10 +4,13 @@
 #include "HuskPresets.h"
 
 enum ParamIndex : int {
-    P_MODEL = 0, P_PARTIALS, P_AIR, P_PITCH, P_OCTAVE, P_FORMANT, P_PHASE, P_PHASE_RATE, P_PHASE_SYNC, P_PHASE_DIV,
-    P_STEPS, P_WATER, P_GRAIN, P_FREEZE, P_CHORD, P_SHIMMER, P_SPACE, P_CRUNCH, P_MIX, P_OUT, P_AB, P_BYPASS,
+    P_MODEL = 0, P_PARTIALS, P_TALK, P_AIR, P_PITCH, P_OCTAVE, P_FORMANT, P_PHASE, P_PHASE_RATE, P_PHASE_SYNC, P_PHASE_DIV,
+    P_STEPS, P_FREEZE, P_CHORD, P_SNAP, P_KEY, P_SCALE, P_GLIDE, P_UNISON, P_DETUNE, P_WIDTH, P_DRIFT,
+    P_SHIMMER, P_SPACE, P_CRUNCH, P_MIX, P_OUT, P_AB, P_BYPASS,
     kNumParams
 };
+// v1 sessions stored the old 7-model list; this maps them onto the closest v2 model.
+int mapV1Model(int v1);
 extern const char* const kParamIds[kNumParams];
 
 class HuskProcessor : public juce::AudioProcessor {
@@ -46,10 +49,10 @@ public:
     husk::Params readParams() const;
 
     // telemetry for the editor
-    std::array<std::atomic<float>, husk::kMaxPartials> dispAmp {};
-    std::atomic<float> f0 { 0 }, inLevel { 0 }, outLevel { 0 };
-    std::atomic<bool> voiced { false };
-    std::atomic<int> heldNotes { 0 }, keptCount { 0 };
+    std::array<std::atomic<float>, husk::kVB> dispBands {};
+    std::atomic<float> f0 { 0 }, inLevel { 0 }, outLevel { 0 }, toneLevel { 0 }, consLevel { 0 };
+    std::atomic<bool> voiced { false }, holding { false };
+    std::atomic<int> heldNotes { 0 }, noteNow { -1 };
     std::atomic<long long> midiCount { 0 };
     int latencyNow() const { return getLatencySamples(); }
     double sampleRateNow() const { return sr; }

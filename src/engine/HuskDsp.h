@@ -75,6 +75,40 @@ struct BandPass {
     void clear() { z1 = z2 = 0; }
 };
 
+
+// General biquad (RBJ cookbook): peaking EQ and low-pass, transposed direct form II.
+struct Biquad {
+    float b0 = 1, b1 = 0, b2 = 0, a1 = 0, a2 = 0, z1 = 0, z2 = 0;
+    void peak(double sr, double fc, double q, double gainDb) {
+        double A = std::pow(10.0, gainDb / 40.0), w = kTwoPi * fc / sr, al = std::sin(w) / (2.0 * q), cw = std::cos(w), a0 = 1.0 + al / A;
+        b0 = (float)((1.0 + al * A) / a0); b1 = (float)(-2.0 * cw / a0); b2 = (float)((1.0 - al * A) / a0); a1 = (float)(-2.0 * cw / a0); a2 = (float)((1.0 - al / A) / a0);
+    }
+    inline float tick(float x) { float y = b0 * x + z1; z1 = b1 * x - a1 * y + z2; z2 = b2 * x - a2 * y; return y; }
+    void clear() { z1 = z2 = 0; }
+};
+
+// Topology-preserving state-variable low-pass (cheap to retune every sample).
+struct SvfLP {
+    float ic1 = 0, ic2 = 0, a1 = 1, a2 = 0, a3 = 0, k = 1.414f;
+    void set(double sr, double fc, double q) {
+        double g = std::tan(kPi * std::clamp(fc, 10.0, 0.49 * sr) / sr); k = (float)(1.0 / q);
+        a1 = (float)(1.0 / (1.0 + g * (g + k))); a2 = (float)(g * a1); a3 = (float)(g * a2);
+    }
+    inline float tick(float v0) {
+        float v3 = v0 - ic2, v1 = a1 * ic1 + a2 * v3, v2 = ic2 + a2 * ic1 + a3 * v3;
+        ic1 = 2 * v1 - ic1; ic2 = 2 * v2 - ic2; return v2;
+    }
+    void clear() { ic1 = ic2 = 0; }
+};
+
+// PolyBLEP correction for a unit step at phase 0 (t = phase in cycles, dt = increment).
+inline float polyBlep(double t, double dt) {
+    if (dt <= 0) return 0.0f;
+    if (t < dt) { double x = t / dt; return (float)(x + x - x * x - 1.0); }
+    if (t > 1.0 - dt) { double x = (t - 1.0) / dt; return (float)(x * x + x + x + 1.0); }
+    return 0.0f;
+}
+
 // Plain integer delay line.
 struct Delay {
     std::vector<float> buf; int w = 0, d = 0;

@@ -1,28 +1,38 @@
-# HUSK
+# HUSK v2
 
-A voice-into-instrument mixer insert for FL Studio. Put HUSK on the mixer track of a vocal (or any monophonic sound), the same way you would put on an EQ or a reverb. It listens to the voice, breaks it into its pure tones, and plays those tones back on a different instrument body while keeping the words, the vowel shapes and the breath.
+A voice-into-instrument mixer insert (VST3). Put HUSK on the mixer track of a vocal or a hum. It follows the voice — its pitch, loudness and vowels — and plays a real instrument with it. By default you hear **only the instrument** (a warm, detuned Saw Lead): the voice itself is replaced, not layered.
 
-It is an **effect**, not a generator. It also takes MIDI in, so you can play chords on it from the piano roll.
+It is an **effect**, not a generator. It also takes MIDI in, so you can play chords on it from the piano roll while you sing.
+
+## How it works
+
+- **Pitch**: the voice's pitch is read about every 3 ms. An octave guard ignores octave flips shorter than 60 ms, short gaps (up to 150 ms, e.g. consonants) keep the note going, and optional **Note Snap** locks notes to a key and scale with **Glide** between them.
+- **Vowels**: 28 bands (100 Hz–12 kHz) read the vowel shape of the voice and impose it on the instrument (vocoder-style). **Talk** sets how strongly.
+- **Loudness** follows the voice frame by frame.
+- **Air**: consonants (s, t, k …) become noise in the instrument's own colour, tuned to the note. Held notes get no hiss.
 
 ## Controls
 
-- **Model** — Sine, Saw, Square, Glass, Flute, Choir, String.
-- **Partials** — from the full voice (64 tones) down to one pure note.
-- **Pitch** (±12 semitones) and **Octave** (−1 / 0 / +1).
-- **Formant** — move the vowel shape without moving the pitch.
-- **Water / Grain pad** — X: Glide ↔ Water (smear), Y: Soft ↔ Grain (stutter texture).
-- **Phase** and **Phase Rate** (free Hz or tempo-synced) — phase distortion of the partials.
-- **Steps** — hold each sound for a tempo-synced step (1/4 to 1/32, triplets included), locked to the host tempo.
-- **Freeze** — hold the current sound as an endless pad.
-- **Chord (MIDI)** — play up to 6 notes from MIDI; the voice's tone and words are put on each note.
-- **Air** (breath and consonants), **Shimmer**, **Space** (reverb), **Crunch** (saturation), **Mix**, **Out**.
-- A/B and Bypass. 11 factory presets.
+- **Model** — Saw Lead, Reed, Glass, Bowed String, Choir, Organ, Pluck, Sub, Ghost (additive, the closest to the voice).
+- **Partials** — brightness (from all harmonics down to one).
+- **Talk** — vowel shaping strength. **Air** — consonants (default 15%).
+- **Pitch** (±12 semitones), **Octave** (−1 / 0 / +1), **Formant** (move the vowels without moving the pitch).
+- **Unison** (1–7 voices), **Detune**, **Width**, **Drift** (slow analogue wander of pitch and filter).
+- **Note Snap**, **Key**, **Scale**, **Glide**.
+- **Phase** and **Phase Rate** (free Hz or tempo-synced) — a swept phase-cancellation (flanger-like) motion.
+- **Steps** — hold each sound for a tempo-synced step (1/4 to 1/32, triplets included).
+- **Freeze** — hold the last sung moment as an endless pad (engaged before singing, it catches the first sung moment).
+- **Chord (MIDI)** — play up to 6 notes from MIDI; the voice's loudness and vowels drive each note.
+- **Shimmer**, **Space** (reverb), **Crunch** (saturation), **Mix**, **Out**, **A/B**, **Bypass**.
+- 11 presets: Synth Lead, Talkbox, Glass Choir, Bowed Pad, Organ Hymn, Pluck Chops, Sub Voice, Ghost, Frozen Halo, Night Bus, Broken Radio.
+
+Sessions saved with v1 still open: the old model is mapped to the closest v2 model and the removed Water/Grain pad is dropped.
 
 ## Latency and loudness
 
-HUSK has to hear a short slice of the voice before it can rebuild it, so it reports a fixed latency to the host (about 18.9 ms at 44.1 kHz, 17.5 ms at 48 kHz). FL Studio compensates for it automatically. The dry path is delayed by exactly the same amount, so Mix at 0 cancels perfectly against the dry signal.
+HUSK reports a fixed latency to the host: 18.9 ms at 44.1/88.2 kHz, 17.5 ms at 48/96 kHz. Hosts compensate automatically. The dry path is delayed by exactly the same amount, so Mix 0, A/B and Bypass are bit-exact copies of the input.
 
-A true-peak safety limiter (4× oversampled detection, inside the reported latency) sits at the very end, so the output stays below 0 dBTP even with every gain knob at the top. At normal levels it does not engage.
+A true-peak safety limiter at the end keeps the output under −0.1 dBFS even with every gain at the top. At normal levels it does not engage.
 
 ## Building
 
@@ -32,4 +42,6 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ```
 
-macOS universal: add `-G Xcode -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"`. See `.github/workflows/macos.yml`. Tests are described in [TESTING.md](TESTING.md); the design is in [PLAN.md](PLAN.md).
+macOS universal: add `-G Xcode -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"`. See `.github/workflows/macos.yml`. Tests: [TESTING.md](TESTING.md).
+
+The test vocal in `tests/data/` is a CC BY-SA 4.0 recording; see `tests/data/README.md`.

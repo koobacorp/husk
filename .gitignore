@@ -12,3 +12,7 @@ cmake-build-*/
 /dist/
 shots/*
 !shots/*.png
+
+# local diagnosis, renders, source material (never committed)
+/diag/
+/PLAN-v2.md

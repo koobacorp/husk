@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(HUSK VERSION 1.0.0 LANGUAGES C CXX)
+project(HUSK VERSION 2.0.0 LANGUAGES C CXX)
 add_compile_options(-Wno-date-time -Wno-error=date-time)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -9,6 +9,14 @@ enable_testing()
 add_executable(husk_engine_tests tests/test_engine.cpp)
 target_include_directories(husk_engine_tests PRIVATE src/engine tests)
 add_test(NAME engine COMMAND husk_engine_tests)
+# ---- Sound-quality gates on a real vocal + a generated phrase (fail the build when missed) ----
+add_executable(husk_quality_tests tests/test_quality.cpp)
+target_include_directories(husk_quality_tests PRIVATE src/engine tests)
+add_test(NAME quality COMMAND husk_quality_tests --data ${CMAKE_CURRENT_SOURCE_DIR}/tests/data)
+if(NOT MSVC)
+  target_compile_options(husk_engine_tests PRIVATE -O2)
+  target_compile_options(husk_quality_tests PRIVATE -O2)
+endif()
 
 option(HUSK_ENGINE_ONLY "Build dependency-free engine tests only" OFF)
 if(HUSK_ENGINE_ONLY)
@@ -27,7 +35,7 @@ else()
 endif()
 
 juce_add_plugin(Husk
-  VERSION 1.0.0
+  VERSION 2.0.0
   COMPANY_NAME koobacorp
   COMPANY_WEBSITE "https://github.com/koobacorp"
   BUNDLE_ID com.koobacorp.husk
@@ -35,7 +43,7 @@ juce_add_plugin(Husk
   PLUGIN_CODE Husk
   FORMATS VST3
   PRODUCT_NAME HUSK
-  DESCRIPTION "HUSK voice resynthesis effect"
+  DESCRIPTION "HUSK voice-into-instrument effect"
   IS_SYNTH FALSE
   NEEDS_MIDI_INPUT TRUE
   NEEDS_MIDI_OUTPUT FALSE
